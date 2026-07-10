@@ -69,6 +69,21 @@
   @keyframes sp{to{transform:rotate(360deg)}}
   @media(prefers-reduced-motion:reduce){.spinner{animation:none}}
   .disclaimer{font-size:11.5px;color:var(--grey);border-top:1px solid var(--line);margin-top:14px;padding-top:9px}
+  .export-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn-export{background:#fff;border:1px solid var(--teal);color:var(--teal);font-weight:600;font-size:12.5px}
+  .btn-export:hover{background:var(--teal);color:#fff}
+  #printArea{display:none}
+  @media print{
+    body>*:not(#printArea){display:none !important}
+    #printArea{display:block !important;padding:0;margin:0;color:#000;background:#fff;font:12pt/1.5 Georgia,serif}
+    #printArea h1{font-size:16pt;margin:0 0 4pt}
+    #printArea .pmeta{font-size:9pt;color:#444;margin-bottom:14pt}
+    #printArea h2{font-size:12.5pt;margin:14pt 0 4pt;border-bottom:0.5pt solid #999;padding-bottom:2pt}
+    #printArea .pfrag{font-size:10pt;margin:0 0 8pt;padding-left:8pt;border-left:2pt solid #999}
+    #printArea .pfrag b{display:block}
+    #printArea .pcite{font-weight:600}
+    #printArea .pdisclaimer{margin-top:16pt;font-size:9pt;color:#444;border-top:0.5pt solid #999;padding-top:6pt}
+  }
   footer{padding:10px 28px 26px;font-size:11.5px;color:var(--grey);max-width:1400px;margin:0 auto}
 </style>
 </head>
@@ -114,10 +129,12 @@
         <option value="openai/gpt-oss-120b">
         <option value="google/gemma-3-27b-it">
       </datalist>
-      <label for="apiKey">Klucz API (tylko dla hostingu; lokalnie zostaw puste) — zapamiętywany na tym telefonie</label>
+      <label for="apiKey">Klucz API (tylko dla hostingu; lokalnie zostaw puste)</label>
+      <div id="storageStatus" class="status">sprawdzam zapamiętywanie…</div>
       <input type="password" id="apiKey" placeholder="np. sk-or-…">
       <div class="row" style="margin-top:12px">
         <button class="btn-ghost" id="btnTest">Sprawdź połączenie</button>
+        <button class="btn-ghost" id="btnSaveNow">Zapisz klucz teraz</button>
       </div>
       <div class="status" id="connStatus"></div>
       <div class="notice"><b>Bielik nie ma wygodnego hostingu z kluczem API</b> (brak na Groq/OpenRouter/Google).
@@ -195,9 +212,15 @@ $env:OLLAMA_CONTEXT_LENGTH="16384"
       <div class="disclaimer">Wygenerowany szkic wymaga weryfikacji przez prawnika.
         Narzędzie odpowiada wyłącznie na podstawie fragmentów widocznych powyżej;
         braki podstawy prawnej sygnalizuje zamiast uzupełniać domysłem.</div>
+      <div class="export-row">
+        <button class="btn-export" id="btnExportPdf">Pobierz PDF</button>
+        <button class="btn-export" id="btnExportWord">Pobierz Word (.doc)</button>
+      </div>
     </div>
   </div>
 </main>
+
+<div id="printArea"></div>
 
 <footer>Demonstrator koncepcji dla DKWOC / CISI · architektura: korpus → retrieval → generacja z cytowaniem → walidacja człowieka ·
   korpus: pełny tekst urzędowy AI Act z preambułą + wytyczne KE · działa z każdym modelem zgodnym z OpenAI API (Bielik, gpt-oss, Gemma, Llama-PLLuM).</footer>
@@ -510,6 +533,36 @@ async function run(){
   }
 }
 
+/* ====== diagnostyka: czy localStorage w ogóle działa na tym urządzeniu ====== */
+function testStorage(){
+  const el = document.getElementById("storageStatus");
+  try{
+    const testKey = "aiact_demo_probe";
+    localStorage.setItem(testKey, "1");
+    const back = localStorage.getItem(testKey);
+    localStorage.removeItem(testKey);
+    if(back === "1"){
+      el.className = "status ok";
+      el.textContent = "Zapamiętywanie działa — klucz zostanie zapisany na tym urządzeniu.";
+      return true;
+    }
+    throw new Error("odczyt nie zgadza się z zapisem");
+  }catch(e){
+    el.className = "status err";
+    el.innerHTML = "Zapamiętywanie NIE działa w tej przeglądarce (" + e.message + "). "+
+      "Wklejaj klucz ręcznie przed każdym użyciem — np. z Notatek w telefonie.";
+    return false;
+  }
+}
+document.getElementById("btnSaveNow").addEventListener("click",()=>{
+  saveSettings();
+  const ok = testStorage();
+  if(ok){
+    const st = document.getElementById("storageStatus");
+    st.textContent = "Zapisano ręcznie. " + st.textContent;
+  }
+});
+
 /* ====== zapamiętywanie ustawień na tym urządzeniu ====== */
 const LS_KEY = "aiact_demo_settings_v1";
 function saveSettings(){
@@ -538,7 +591,74 @@ function loadSettings(){
   document.getElementById(id).addEventListener("input", saveSettings);
 });
 
+/* ====== eksport: zbieranie treści ====== */
+function exportSnapshot(){
+  const q = document.getElementById("query").value.trim();
+  const ansHTML = document.getElementById("answer").innerHTML;
+  const fragNodes = [...document.querySelectorAll("#fragList .frag")];
+  const frags = fragNodes.map(n=>{
+    const src = n.querySelector(".src")?.textContent.replace(/\s+/g," ").trim() || "";
+    const txt = n.querySelector(".txt")?.textContent.trim() || "";
+    return {src, txt};
+  });
+  const now = new Date();
+  const stamp = now.toLocaleString("pl-PL");
+  return {q, ansHTML, frags, stamp};
+}
+function esc2(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+document.getElementById("btnExportPdf").addEventListener("click",()=>{
+  const {q, ansHTML, frags, stamp} = exportSnapshot();
+  if(!ansHTML){ alert("Najpierw wygeneruj ocenę."); return; }
+  const fragsHTML = frags.map(f=>`<div class="pfrag"><b>${esc2(f.src)}</b>${esc2(f.txt)}</div>`).join("");
+  document.getElementById("printArea").innerHTML = `
+    <h1>Asystent AI Act — ocena zgodności (szkic)</h1>
+    <div class="pmeta">Wygenerowano: ${esc2(stamp)} · rozporządzenie (UE) 2024/1689</div>
+    <h2>Zapytanie</h2>
+    <div>${esc2(q)}</div>
+    <h2>Znalezione przepisy (retrieval)</h2>
+    ${fragsHTML || "<div>brak</div>"}
+    <h2>Ocena — treść</h2>
+    <div>${ansHTML}</div>
+    <div class="pdisclaimer">Szkic wygenerowany automatycznie na podstawie fragmentów widocznych powyżej.
+      Wymaga weryfikacji przez prawnika przed jakimkolwiek wykorzystaniem.</div>`;
+  window.print();
+});
+
+document.getElementById("btnExportWord").addEventListener("click",()=>{
+  const {q, ansHTML, frags, stamp} = exportSnapshot();
+  if(!ansHTML){ alert("Najpierw wygeneruj ocenę."); return; }
+  const fragsHTML = frags.map(f=>`<p style="margin:0 0 8pt;padding-left:8pt;border-left:2pt solid #999;font-size:10pt">
+    <b>${esc2(f.src)}</b><br>${esc2(f.txt)}</p>`).join("");
+  const doc = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8"><title>Ocena zgodności AI Act</title>
+    <style>
+      body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000}
+      h1{font-size:16pt;margin:0 0 4pt} h2{font-size:13pt;margin:16pt 0 6pt;border-bottom:1pt solid #999}
+      .meta{font-size:9pt;color:#444;margin-bottom:14pt}
+      .disc{margin-top:18pt;font-size:9pt;color:#444;border-top:1pt solid #999;padding-top:6pt}
+      .cite{font-weight:600}
+    </style></head><body>
+    <h1>Asystent AI Act — ocena zgodności (szkic)</h1>
+    <div class="meta">Wygenerowano: ${esc2(stamp)} &middot; rozporządzenie (UE) 2024/1689</div>
+    <h2>Zapytanie</h2><p>${esc2(q)}</p>
+    <h2>Znalezione przepisy (retrieval)</h2>${fragsHTML || "<p>brak</p>"}
+    <h2>Ocena &mdash; treść</h2><div>${ansHTML}</div>
+    <p class="disc">Szkic wygenerowany automatycznie na podstawie fragmentów widocznych powyżej.
+    Wymaga weryfikacji przez prawnika przed jakimkolwiek wykorzystaniem.</p>
+    </body></html>`;
+  const blob = new Blob(['\ufeff', doc], {type:"application/msword"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const fname = "ocena-aiact-" + new Date().toISOString().slice(0,16).replace(/[:T]/g,"-") + ".doc";
+  a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+});
+
 /* init */
+testStorage();
 loadSettings();
 refreshCorpusPanel();
 if(location.protocol==="file:"){
