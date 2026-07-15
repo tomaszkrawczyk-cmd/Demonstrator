@@ -1,0 +1,10 @@
+{
+  "task_id": "task-corpus-part2-part3",
+  "task_description": "Write corpus_part2.json and corpus_part3.json to the repository, commit and push to main",
+  "status": "blocked",
+  "feature_order": ["FEAT-001"],
+  "blocked_reason": {
+    "retryable": false,
+    "detail": "The user instruction references attached .txt files (corpus_part2_txt.txt and corpus_part3_txt.txt) whose content should be saved as .json files. The orchestrator briefing states the document content is available in the conversation context, but no actual document content blocks were passed to this sub-agent. The files have never existed in the repository history. Cannot proceed without the actual JSON content to write."
+  }
+}
