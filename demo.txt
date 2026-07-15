@@ -1,0 +1,899 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Asystent oceny zgodności AI — demo RAG</title>
+<style>
+  :root{
+    --navy:#16192d; --navy2:#232842; --slate:#3a4256; --teal:#1f6f78; --teald:#155259;
+    --green:#256d3a; --amber:#9a6a13; --amberbg:#fdf6e7;
+    --bg:#f4f6fa; --panel:#ffffff; --line:#dde2ec; --grey:#5b6170; --ice:#d8deea;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--navy);
+    font:14px/1.55 "Segoe UI",system-ui,-apple-system,Arial,sans-serif}
+  header{background:var(--navy);color:#fff;padding:18px 28px;display:flex;align-items:baseline;gap:14px;flex-wrap:wrap}
+  header h1{margin:0;font-size:19px;font-weight:600;letter-spacing:.2px}
+  header .sub{color:var(--ice);font-size:12.5px}
+  header .badge{margin-left:auto;font-size:11px;color:var(--ice);border:1px solid var(--slate);
+    padding:3px 10px;border-radius:20px}
+  main{display:grid;grid-template-columns:340px 1fr;gap:18px;padding:18px 28px;max-width:1400px;margin:0 auto}
+  @media(max-width:960px){main{grid-template-columns:1fr}}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:16px 18px;margin-bottom:16px}
+  .card h2{margin:0 0 10px;font-size:13px;text-transform:uppercase;letter-spacing:.8px;color:var(--teal)}
+  label{display:block;font-size:11.5px;color:var(--grey);margin:10px 0 3px}
+  input[type=text],input[type=password],select,textarea{
+    width:100%;border:1px solid var(--line);border-radius:7px;padding:8px 10px;font:inherit;background:#fff;color:var(--navy)}
+  input:focus,select:focus,textarea:focus{outline:2px solid var(--teal);outline-offset:-1px}
+  textarea{resize:vertical;min-height:110px}
+  .row{display:flex;gap:8px}
+  .row>*{flex:1}
+  button{font:inherit;border:0;border-radius:7px;padding:9px 16px;cursor:pointer}
+  button:focus-visible{outline:2px solid var(--navy);outline-offset:2px}
+  .btn-primary{background:var(--teal);color:#fff;font-weight:600}
+  .btn-primary:hover{background:var(--teald)}
+  .btn-primary:disabled{background:#9fb6b9;cursor:not-allowed}
+  .btn-ghost{background:#fff;border:1px solid var(--line);color:var(--slate)}
+  .btn-ghost:hover{border-color:var(--teal);color:var(--teal)}
+  .btn-danger{background:#fff;border:1px solid #d9a0a0;color:#8c2f2f}
+  .status{font-size:12px;margin-top:8px;min-height:16px}
+  .status.ok{color:var(--green)} .status.err{color:#8c2f2f}
+  .chunks-meta{font-size:12.5px;color:var(--grey)}
+  .act-list{list-style:none;margin:8px 0 0;padding:0;font-size:12.5px}
+  .act-list li{display:flex;justify-content:space-between;padding:4px 0;border-bottom:1px dashed var(--line)}
+  .act-list li span:last-child{color:var(--grey)}
+  .notice{background:var(--amberbg);border:1px solid #ecd9ae;border-radius:8px;
+    padding:9px 12px;font-size:12px;color:#6d4d10;margin-top:10px}
+  details{margin-top:10px;font-size:12.5px}
+  details summary{cursor:pointer;color:var(--teal);font-weight:600}
+  details pre{background:#f0f2f7;border-radius:7px;padding:10px;overflow:auto;font-size:11.5px;line-height:1.5}
+  details code{background:#eceff5;padding:1px 5px;border-radius:4px}
+  /* right column */
+  .query-actions{display:flex;gap:8px;margin-top:10px;flex-wrap:wrap}
+  .frag-wrap{margin-top:4px}
+  .frag{border:1px solid var(--line);border-left:4px solid var(--teal);border-radius:7px;
+    padding:9px 12px;margin:8px 0;background:#fbfcfe}
+  .frag .src{font-weight:700;font-size:12px;color:var(--teald)}
+  .frag .score{float:right;font-size:10.5px;color:var(--grey)}
+  .frag .txt{font-size:12.5px;color:var(--slate);margin-top:3px}
+  .frag .tag{display:inline-block;font-size:10px;background:#e7edf6;color:var(--slate);
+    border-radius:4px;padding:1px 6px;margin-left:6px;vertical-align:1px}
+  .answer{font-size:14px}
+  .answer h2{font-size:15.5px;color:var(--navy);text-transform:none;letter-spacing:0;
+    border-bottom:1px solid var(--line);padding-bottom:4px;margin:18px 0 8px}
+  .answer ul{margin:6px 0;padding-left:22px}
+  .answer .cite{background:#e3eef0;color:var(--teald);border-radius:4px;padding:0 5px;font-size:12.5px;white-space:nowrap}
+  .spinner{display:inline-block;width:14px;height:14px;border:2.5px solid var(--ice);
+    border-top-color:var(--teal);border-radius:50%;animation:sp .8s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes sp{to{transform:rotate(360deg)}}
+  @media(prefers-reduced-motion:reduce){.spinner{animation:none}}
+  .disclaimer{font-size:11.5px;color:var(--grey);border-top:1px solid var(--line);margin-top:14px;padding-top:9px}
+  .export-row{display:flex;gap:8px;margin-top:12px;flex-wrap:wrap}
+  .btn-export{background:#fff;border:1px solid var(--teal);color:var(--teal);font-weight:600;font-size:12.5px}
+  .btn-export:hover{background:var(--teal);color:#fff}
+  .cmp-toggle{display:flex;align-items:center;gap:8px;margin-top:14px;font-size:13px;color:var(--slate)}
+  .cmp-toggle input{width:auto}
+  #configB{display:none;margin-top:10px;padding-top:12px;border-top:1px dashed var(--line)}
+  .ans-grid{display:grid;grid-template-columns:1fr;gap:16px}
+  .ans-grid.two{grid-template-columns:1fr 1fr}
+  @media(max-width:760px){.ans-grid.two{grid-template-columns:1fr}}
+  .model-badge{display:inline-block;font-size:10.5px;font-weight:700;background:var(--teal);color:#fff;
+    border-radius:4px;padding:1px 7px;margin-left:8px;vertical-align:2px}
+  .model-badge.b{background:var(--slate)}
+  #printArea{display:none}
+  @media print{
+    body>*:not(#printArea){display:none !important}
+    #printArea{display:block !important;padding:0;margin:0;color:#000;background:#fff;font:12pt/1.5 Georgia,serif}
+    #printArea h1{font-size:16pt;margin:0 0 4pt}
+    #printArea .pmeta{font-size:9pt;color:#444;margin-bottom:14pt}
+    #printArea h2{font-size:12.5pt;margin:14pt 0 4pt;border-bottom:0.5pt solid #999;padding-bottom:2pt}
+    #printArea .pfrag{font-size:10pt;margin:0 0 8pt;padding-left:8pt;border-left:2pt solid #999}
+    #printArea .pfrag b{display:block}
+    #printArea .pcite{font-weight:600}
+    #printArea .pdisclaimer{margin-top:16pt;font-size:9pt;color:#444;border-top:0.5pt solid #999;padding-top:6pt}
+  }
+  footer{padding:10px 28px 26px;font-size:11.5px;color:var(--grey);max-width:1400px;margin:0 auto}
+</style>
+</head>
+<body>
+<header>
+  <h1>Asystent AI Act + RODO — pytania i ocena zgodności</h1>
+  <span class="sub">AI Act (2024/1689) i RODO (2016/679) — demonstrator RAG na tekstach urzędowych</span>
+  <span class="badge">modelowo-agnostyczny · offline-ready</span>
+</header>
+
+<div id="fileWarning" style="display:none;background:#fdecea;border-bottom:2px solid #c0392b;
+  color:#7a1f1f;padding:10px 28px;font-size:13px;line-height:1.5">
+  <b>Uwaga:</b> ta strona jest otwarta bezpośrednio z pliku (adres zaczyna się od <code>file://</code>).
+  Przeglądarki blokują wtedy połączenia z API dostawców takich jak Groq — zobaczysz błąd „Failed to fetch”.
+  <b>Rozwiązanie:</b> zamknij tę kartę i uruchom plik <code>Uruchom_demo.bat</code> (dwuklik) z tego samego folderu —
+  otworzy demo poprawnie pod adresem <code>http://localhost:8000/…</code>.
+</div>
+
+<main>
+  <!-- ============ LEFT: config + corpus ============ -->
+  <div>
+    <div class="card">
+      <h2>Połączenie z modelem</h2>
+      <label for="preset">Środowisko</label>
+      <select id="preset">
+        <option value="groq" selected>Groq (hosting, gpt-oss — szybki, darmowy limit)</option>
+        <option value="together">Together AI (hosting, Gemma 4 / Llama)</option>
+        <option value="google">Google AI Studio (hosting, Gemma — uwaga: znane problemy CORS)</option>
+        <option value="openrouter">OpenRouter (hosting, wiele modeli)</option>
+        <option value="ollama">Ollama (lokalnie) — http://localhost:11434/v1</option>
+        <option value="lmstudio">LM Studio (lokalnie) — http://localhost:1234/v1</option>
+        <option value="custom">Własny endpoint (zgodny z OpenAI API)</option>
+      </select>
+      <label for="baseUrl">Adres bazowy API</label>
+      <input type="text" id="baseUrl" value="https://openrouter.ai/api/v1">
+      <label for="model">Model</label>
+      <input type="text" id="model" value="openai/gpt-oss-120b" list="modelList">
+      <datalist id="modelList">
+        <option value="openai/gpt-oss-120b">
+        <option value="openai/gpt-oss-20b">
+        <option value="SpeakLeash/bielik-11b-v3.0-instruct">
+        <option value="gemma-3-27b-it">
+        <option value="gemma-3-12b-it">
+        <option value="openai/gpt-oss-120b">
+        <option value="google/gemma-3-27b-it">
+      </datalist>
+      <label for="apiKey">Klucz API (tylko dla hostingu; lokalnie zostaw puste)</label>
+      <div id="storageStatus" class="status">sprawdzam zapamiętywanie…</div>
+      <input type="password" id="apiKey" placeholder="np. sk-or-…">
+      <div class="row" style="margin-top:12px">
+        <button class="btn-ghost" id="btnTest">Sprawdź połączenie</button>
+        <button class="btn-ghost" id="btnSaveNow">Zapisz klucz teraz</button>
+      </div>
+      <div class="status" id="connStatus"></div>
+
+      <label class="cmp-toggle"><input type="checkbox" id="compareToggle"> Porównaj z drugim modelem (np. Gemma 4)</label>
+      <div id="configB">
+        <label for="presetB">Środowisko (model B)</label>
+        <select id="presetB">
+          <option value="together" selected>Together AI (hosting, Gemma 4 / Llama)</option>
+          <option value="groq">Groq (hosting, gpt-oss)</option>
+          <option value="google">Google AI Studio (hosting, Gemma — uwaga: znane problemy CORS)</option>
+          <option value="openrouter">OpenRouter (hosting, wiele modeli)</option>
+          <option value="ollama">Ollama (lokalnie) — http://localhost:11434/v1</option>
+          <option value="custom">Własny endpoint</option>
+        </select>
+        <label for="baseUrlB">Adres bazowy API (model B)</label>
+        <input type="text" id="baseUrlB" value="https://api.together.xyz/v1">
+        <label for="modelB">Model B</label>
+        <input type="text" id="modelB" value="google/gemma-4-31b-it" list="modelListB">
+        <datalist id="modelListB">
+          <option value="google/gemma-4-31b-it">
+          <option value="openai/gpt-oss-120b">
+          <option value="meta-llama/Llama-3.3-70B-Instruct-Turbo">
+        </datalist>
+        <label for="apiKeyB">Klucz API (model B)</label>
+        <input type="password" id="apiKeyB" placeholder="osobny klucz — np. z together.ai">
+        <div class="row" style="margin-top:12px">
+          <button class="btn-ghost" id="btnTestB">Sprawdź połączenie B</button>
+        </div>
+        <div class="status" id="connStatusB"></div>
+      </div>
+
+      <div class="notice"><b>Bielik nie ma wygodnego hostingu z kluczem API</b> (brak na Groq/OpenRouter/Google).
+        Jedyne realne ścieżki to uruchomienie lokalne (Ollama) albo Hugging Face Inference Endpoints
+        (wymaga samodzielnej konfiguracji serwera). Do demonstracji na żywo poleć gpt-oss lub Gemma.</div>
+      <details>
+        <summary>Jak uruchomić model lokalnie (Windows / PowerShell)</summary>
+        <pre># 1. Zainstaluj Ollama: https://ollama.com/download
+# 2. Pobierz model (raz):
+ollama pull gpt-oss:20b
+#    albo polski Bielik:
+ollama pull SpeakLeash/bielik-11b-v3.0-instruct
+# 3. Zezwol przegladarce na dostep (CORS) i uruchom:
+$env:OLLAMA_ORIGINS="*"
+ollama serve
+# 4. W tej aplikacji: srodowisko "Ollama",
+#    wpisz nazwe modelu, "Sprawdz polaczenie".
+# WAZNE dla RAG: zwieksz okno kontekstu (domyslne 4096 to za malo):
+$env:OLLAMA_CONTEXT_LENGTH="16384"
+# (ustaw PRZED "ollama serve", w tym samym oknie PowerShell)</pre>
+        <p>gpt-oss-120b (117 mld parametrów) wymaga ~80 GB pamięci — lokalnie
+        nie wstanie na typowym PC; wybierz środowisko <code>OpenRouter</code>,
+        model <code>openai/gpt-oss-120b</code> i podaj klucz API.
+        Uwaga: przez hosting wysyłaj wyłącznie treści jawne.</p>
+      </details>
+    </div>
+
+    <div class="card">
+      <h2>Korpus aktów prawnych</h2>
+      <div class="chunks-meta" id="corpusMeta"></div>
+      <ul class="act-list" id="actList"></ul>
+      <div class="row" style="margin-top:12px">
+        <button class="btn-ghost" id="btnImport">Wczytaj korpus…</button>
+        <button class="btn-ghost" id="btnExport">Pobierz JSON</button>
+      </div>
+      <input type="file" id="fileInput" accept=".json,.txt" style="display:none">
+      <div class="status" id="corpusStatus"></div>
+      <div class="notice"><b>Korpus:</b> pełne urzędowe teksty dwóch aktów —
+        AI Act (artykuły, załączniki, 180 motywów; Dz.Urz. UE L 2024/1689) oraz
+        RODO (99 artykułów, 173 motywy; Dz.Urz. UE L 119/2016) — plus oznaczone
+        streszczenia robocze wytycznych Komisji C(2025) 5052.
+        Asystent rozróżnia rangę źródeł: artykuł to norma, motyw to wykładnia,
+        wytyczne to niewiążąca interpretacja.</div>
+      <details>
+        <summary>Format importu</summary>
+        <p><b>JSON:</b> tablica obiektów
+        <code>{"akt":"AI Act","przepis":"art. 6 ust. 2","tekst":"…","tagi":["…"]}</code></p>
+        <p><b>TXT:</b> fragmenty rozdzielone linią <code>===</code>, pierwszy wiersz fragmentu:
+        <code>AKT | PRZEPIS</code>, dalej tekst przepisu.</p>
+      </details>
+    </div>
+  </div>
+
+  <!-- ============ RIGHT: query + results ============ -->
+  <div>
+    <div class="card">
+      <h2>Pytanie o AI Act lub opis systemu do oceny</h2>
+      <textarea id="query" placeholder="Zadaj pytanie o AI Act (np. jakie obowiązki ma podmiot stosujący system wysokiego ryzyka?) albo opisz system AI do oceny…"></textarea>
+      <div class="query-actions">
+        <button class="btn-primary" id="btnRun">Oceń zgodność</button>
+        <button class="btn-ghost" id="btnExampleQ">Przykład: pytanie</button>
+        <button class="btn-ghost" id="btnExample">Przykład: ocena systemu</button>
+        <button class="btn-danger" id="btnStop" style="display:none">Przerwij</button>
+      </div>
+      <div class="status" id="runStatus"></div>
+      <div class="status" id="runStatusB2"></div>
+    </div>
+
+    <div class="card" id="fragCard" style="display:none">
+      <h2>Znalezione przepisy (retrieval)</h2>
+      <div class="frag-wrap" id="fragList"></div>
+    </div>
+
+    <div id="ansGrid" class="ans-grid">
+      <div class="card" id="ansCard" style="display:none">
+        <h2 id="ansHeaderA">Ocena zgodności — szkic</h2>
+        <div class="answer" id="answer"></div>
+        <div class="disclaimer">Wygenerowany szkic wymaga weryfikacji przez prawnika.
+          Narzędzie odpowiada wyłącznie na podstawie fragmentów widocznych powyżej;
+          braki podstawy prawnej sygnalizuje zamiast uzupełniać domysłem.</div>
+        <div class="export-row">
+          <button class="btn-export" id="btnExportPdf">Pobierz PDF</button>
+          <button class="btn-export" id="btnExportWord">Pobierz Word (.doc)</button>
+        </div>
+      </div>
+      <div class="card" id="ansCardB" style="display:none">
+        <h2 id="ansHeaderB">Ocena zgodności — model B</h2>
+        <div class="answer" id="answerB"></div>
+        <div class="disclaimer">Wygenerowany szkic wymaga weryfikacji przez prawnika.
+          Narzędzie odpowiada wyłącznie na podstawie fragmentów widocznych powyżej;
+          braki podstawy prawnej sygnalizuje zamiast uzupełniać domysłem.</div>
+        <div class="export-row">
+          <button class="btn-export" id="btnExportPdfB">Pobierz PDF</button>
+          <button class="btn-export" id="btnExportWordB">Pobierz Word (.doc)</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</main>
+
+<div id="printArea"></div>
+
+<footer>Demonstrator koncepcji dla DKWOC / CISI · architektura: korpus → retrieval → generacja z cytowaniem → walidacja człowieka ·
+  korpus: pełne teksty urzędowe AI Act i RODO (z preambułami) + wytyczne KE · działa z każdym modelem zgodnym z OpenAI API (Bielik, gpt-oss, Gemma, Llama-PLLuM).</footer>
+<script>
+
+/* ====== KORPUS STARTOWY — streszczenia robocze (podmień na teksty urzędowe) ====== */
+/* korpus ładowany asynchronicznie z corpus_part1.json / corpus_part2.json / corpus_part3.json */
+
+/* ====== stan ====== */
+let corpus = []; // wypełniane asynchronicznie z plików corpus_part*.json
+let controller = null;
+
+/* ====== narzędzia tekstowe ====== */
+const PL_MAP = {"ą":"a","ć":"c","ę":"e","ł":"l","ń":"n","ó":"o","ś":"s","ź":"z","ż":"z"};
+function fold(s){return s.toLowerCase().replace(/[ąćęłńóśźż]/g,m=>PL_MAP[m]);}
+const STOP = new Set(["i","w","z","na","do","o","od","po","dla","nie","jest","sa","to","the","of","a","oraz","lub","albo","przez","ktory","ktora","ktore","sie","ze","jako","tym","tego","tej","ten"]);
+const SUFFIXES=["iego","iemu","ianie","owie","ego","emu","ych","ymi","imi","ami","ach","owi","iem","iom","ie","ia","ii","om","em","ow","y","i","e","a","o","u"];
+function stem(t){
+  if(t.length<=4) return t;
+  for(const suf of SUFFIXES){
+    if(t.length-suf.length>=4 && t.endsWith(suf)) return t.slice(0,t.length-suf.length);
+  }
+  return t;
+}
+function tokens(s){
+  return fold(s).replace(/[^a-z0-9ą-ż]+/gi," ").split(/\s+/)
+    .filter(t=>t.length>1 && !STOP.has(t)).map(stem);
+}
+
+/* ====== BM25 ====== */
+let idx=null;
+function buildIndex(){
+  const docs = corpus.map(c=>{const tg=(c.tagi||[]).join(" ");return tokens(c.akt+" "+c.przepis+" "+tg+" "+tg+" "+tg+" "+c.tekst);});
+  const df={}, N=docs.length;
+  docs.forEach(d=>{ new Set(d).forEach(t=>df[t]=(df[t]||0)+1); });
+  const avgdl = docs.reduce((a,d)=>a+d.length,0)/N;
+  idx={docs,df,N,avgdl};
+}
+function bm25(queryTokens, di){
+  const k1=1.4,b=0.75,d=idx.docs[di],dl=d.length;
+  const tf={}; d.forEach(t=>tf[t]=(tf[t]||0)+1);
+  let s=0;
+  for(const q of queryTokens){
+    const f=tf[q]; if(!f) continue;
+    const n=idx.df[q]||0;
+    const idf=Math.log(1+(idx.N-n+0.5)/(n+0.5));
+    s += idf * (f*(k1+1))/(f + k1*(1-b+b*dl/idx.avgdl));
+  }
+  return s;
+}
+/* kotwice pojęciowe: kluczowe pojęcie aktu -> przepis macierzysty (element logiki oceny) */
+const ANCHORS = [
+  {re:/wysokiego ryzyka|wysokie ryzyko/i, prz:/^art\. 6 |^za\u0142\u0105cznik III/, bonus:4},
+  {re:/zakazan|niedozwolon|manipulacj|scoring/i, prz:/^art\. 5 /, bonus:4},
+  {re:/wojsk|obronn|bezpiecze\u0144stwa narodowego|armii|si\u0142 zbrojnych/i, prz:/^art\. 2 /, bonus:4},
+  {re:/kar|grzywn|sankcj/i, prz:/^art\. 99|^art\. 100|^art\. 101/, bonus:3},
+  {re:/chatbot|deepfake|interakcj|informowa/i, prz:/^art\. 50/, bonus:3},
+  {re:/definicj|co to jest|poj\u0119cie systemu/i, prz:/^art\. 3 pkt 1/, bonus:3},
+  {re:/kiedy|od kiedy|termin|stosuje si\u0119 od|harmonogram/i, prz:/^art\. 113/, bonus:3},
+  {re:/nadz\u00f3r cz\u0142owieka|human oversight/i, prz:/^art\. 14/, bonus:4},
+  {re:/GPAI|og\u00f3lnego przeznaczenia|model j\u0119zykowy/i, prz:/^art\. 5[123]/, bonus:3},
+];
+const QUERY_SYN = {
+  "zolnierz":["wojskow","wojsk"], "zolnierza":["wojskow","wojsk"], "zolnierzy":["wojskow","wojsk"],
+  "wylaczon":["wylaczen"], "wylacza":["wylaczen"], "wylaczaj":["wylaczen"],
+  "wojskowy":["wojskow"], "armia":["wojskow"], "armii":["wojskow"],
+  "prywatnosc":["danych","osobow"], "pracownik":["zatrudnien"], "pracownicy":["zatrudnien"]
+};
+function retrieve(query, k=7){
+  const qt = tokens(query);
+  for(const t of [...qt]){ if(QUERY_SYN[t]) qt.push(...QUERY_SYN[t]); }
+  const artRefs = (fold(query).match(/art\.?\s*\d+[a-z]?/g)||[]).map(s=>s.replace(/\s+/g," "));
+  const anchors = ANCHORS.filter(a=>a.re.test(query));
+  const qf = fold(query);
+  // jawna nazwa aktu w pytaniu
+  const wantsRodo = /\brodo\b|2016\/679|ogolne rozporzadzenie o ochronie danych/.test(qf);
+  const wantsAiAct = /ai act|aiact|2024\/1689|akt w sprawie sztucznej/.test(qf);
+  // tematyka danych osobowych bez nazwy aktu (np. "ochrona danych osobowych zolnierza")
+  const rodoTopic = /dan\w* osobow|ochron\w* danych|prywatnosc|administrator danych|przetwarzan\w* danych/.test(qf);
+  // tematyka systemow AI
+  const aiTopic = /system\w* (ai|si|sztuczn)|sztuczn\w* inteligencj|wysokiego ryzyka|chatbot|model\w* jezykow/.test(qf);
+  const boostRodo = wantsRodo || (rodoTopic && !wantsAiAct && !aiTopic);
+  const boostAi   = wantsAiAct || (aiTopic && !wantsRodo && !rodoTopic);
+  const scored = corpus.map((c,i)=>{
+    let s = bm25(qt,i);
+    for(const ar of artRefs){ if(fold(c.przepis).includes(ar.replace("art","art."))||fold(c.przepis).includes(ar)) s+=6; }
+    if(s>0){
+      if(boostRodo && !boostAi && c.akt.startsWith("RODO")) s+=5;
+      if(boostAi && !boostRodo && c.akt.startsWith("AI Act")) s+=5;
+    }
+    return {c,s};
+  }).filter(x=>x.s>0.3).sort((a,b)=>b.s-a.s);
+  let top = scored.slice(0,k);
+  // pytanie krzyzowe (oba tematy naraz): zagwarantuj co najmniej 2 fragmenty z kazdego aktu
+  if((rodoTopic||wantsRodo) && (aiTopic||wantsAiAct)){
+    for(const aktPrefix of ["RODO","AI Act"]){
+      const have = top.filter(x=>x.c.akt.startsWith(aktPrefix)).length;
+      if(have < 2){
+        const candidates = scored.filter(x=>x.c.akt.startsWith(aktPrefix) && !top.includes(x)).slice(0, 2-have);
+        for(const cand of candidates){
+          // usun najslabszy fragment z aktu nadreprezentowanego
+          for(let j=top.length-1; j>=0; j--){
+            if(!top[j].c.akt.startsWith(aktPrefix)){ top.splice(j,1); break; }
+          }
+          top.push(cand);
+        }
+        top.sort((a,b)=>b.s-a.s);
+      }
+    }
+  }
+  return top;
+}
+
+/* ====== prompt ====== */
+const SYSTEM_PROMPT =
+`Reasoning: high
+
+Jesteś asystentem prawnym specjalizującym się w dwóch aktach: rozporządzeniu (UE) 2024/1689 ("AI Act") oraz rozporządzeniu (UE) 2016/679 ("RODO"). Pracujesz dla prawnika w polskim środowisku wojskowym. Gdy stan faktyczny dotyka obu aktów (np. system AI przetwarzający dane osobowe), analizujesz oba równolegle i wyraźnie rozdzielasz obowiązki z każdego z nich.
+
+JĘZYK: Odpowiadasz WYŁĄCZNIE po polsku - nawet jeżeli fragmenty lub pytanie zawierają słowa angielskie. Terminologia polska: "motyw" (nie "recital"), "podmiot stosujący" (nie "deployer" - dopuszczalne w nawiasie), "wysokie ryzyko".
+
+ŹRÓDŁA I ICH HIERARCHIA - to fundament Twojej pracy:
+1. ARTYKUŁY i ZAŁĄCZNIKI aktów = wiążąca norma prawna. Podstawa każdej tezy. Cytuj z oznaczeniem aktu: [AI Act, art. 6 ust. 1], [RODO, art. 22], [AI Act, załącznik III].
+2. MOTYWY preambuły = wskazówka wykładni, NIE samodzielna podstawa prawna. Używaj ich do interpretacji artykułów, zwłaszcza pojęć nieostrych. Cytuj: [AI Act, motyw 24], [RODO, motyw 71]. Oba akty mają własne motywy — nigdy nie myl ich numeracji.
+3. WYTYCZNE KOMISJI = niewiążąca interpretacja urzędowa (wiążącej wykładni dokonuje wyłącznie TSUE). Gdy się na nie powołujesz, zaznacz ich niewiążący charakter. Cytuj: [Wytyczne KE C(2025) 5052, pkt 24].
+Gdy artykuł i motyw dotyczą tej samej kwestii - prowadź wywód od artykułu, motywem go doprecyzuj. Nigdy odwrotnie.
+
+ZASADY BEZWZGLĘDNE:
+1. Opierasz się WYŁĄCZNIE na FRAGMENTACH podanych w wiadomości użytkownika. Nie powołujesz źródeł spoza fragmentów i nie uzupełniasz ich własną wiedzą.
+2. Każdą tezę kończysz odwołaniem w nawiasie kwadratowym w formatach z sekcji ŹRÓDŁA. To jedyny dozwolony format cytowania - żadnych przypisów numerowanych, nawiasów pełnej szerokości ani numerów linii.
+3. Jeżeli fragmenty nie wystarczają, piszesz to wprost i wskazujesz, jakiego przepisu brakuje. Nie zgadujesz.
+4. PRIORYTET NAD KAŻDĄ INNĄ REGUŁĄ: zanim zastosujesz jakikolwiek test z aktu (klasyfikacja ryzyka, wyłączenie, obowiązki), sprawdź, czy podmiot pytania w ogóle JEST systemem AI w rozumieniu art. 3 pkt 1. Pytania w formie "czy X jest systemem wysokiego ryzyka / czy X podlega AI Act", gdzie X to organizacja, jednostka, urządzenie, osoba lub instytucja (np. "jednostka wojskowa", "dowództwo", "żołnierz") - ZAWSZE wymagają tego wstępnego sprostowania, niezależnie od tego, czy pytanie brzmi jak proste pytanie faktyczne, czy jak prośba o klasyfikację. Zaczynasz od jednozdaniowego sprostowania (X nie jest systemem AI; testowi podlegają systemy AI, którymi X ewentualnie się posługuje), po czym dopiero odpowiadasz na tak doprecyzowane pytanie.
+5. ZAKAZ FABRYKOWANIA STANU FAKTYCZNEGO: nie wolno wymyślać przykładowych produktów, dyrektyw, sytuacji ani innych faktów nieobecnych w pytaniu użytkownika w celu "domknięcia" klasyfikacji lub uzupełnienia brakującej informacji (np. nie zgaduj, że system jest elementem "np. wyrobu medycznego" czy "np. maszyny", jeśli użytkownik tego nie podał). Jeśli ocena zależy od faktu, którego nie znasz, piszesz to wprost w sekcji "Luki" jako brakującą informację do ustalenia - nie ilustrujesz brakującego faktu wymyślonym przykładem, który mógłby zostać odczytany jako wniosek.
+6. Wyłączenie wojskowe/obronne (art. 2 ust. 3) jest FUNKCJONALNE, nie podmiotowe - dotyczy konkretnego zastosowania, nie faktu, że użytkownikiem jest wojsko. Jeżeli z fragmentów (motyw 24, wytyczne KE) wynika, że zastosowanie może być mieszane lub cywilne (np. CIMIC, komunikacja z ludnością cywilną, władzami, organizacjami) - już w kwalifikacji nazywasz to przypadkiem granicznym, przedstawiasz oba scenariusze i wskazujesz, od czego zależy wynik. Zastrzeżenia podważającego tezę nie wolno chować w sekcji luk.
+
+FORMA (ogranicz się do tych elementów - inne się nie wyświetlą):
+- nagłówki "## ", pogrubienie **tekst**, listy z myślnikiem "- "
+- ZAKAZ tabel, bloków kodu i zagnieżdżonych list
+- zwięźle i precyzyjnie, językiem prawniczym; bez powtórzeń i ozdobników
+
+DWA TRYBY:
+A. PYTANIE o treść aktów - odpowiedz bezpośrednio, z cytowaniami; w razie potrzeby krótko wskaż kontekst.
+B. OPIS SYSTEMU AI do oceny - struktura:
+## 1. Kwalifikacja systemu
+## 2. Mające zastosowanie obowiązki
+## 3. Luki i dalsze kroki
+
+Na końcu każdej odpowiedzi jedno zdanie: "Szkic wymaga weryfikacji przez prawnika."`;
+
+function buildUserMsg(desc, frags){
+  const lines = frags.map((f,i)=>{const t=f.c.tekst.length>4200?f.c.tekst.slice(0,4200)+" […]":f.c.tekst;return `[${i+1}] (${f.c.akt}, ${f.c.przepis}) ${t}`;});
+  return `FRAGMENTY AKTÓW PRAWNYCH:\n${lines.join("\n\n")}\n\nOPIS SYSTEMU AI DO OCENY:\n${desc}\n\nPrzeprowadź ocenę zgodności według zadanej struktury.`;
+}
+
+/* ====== rendering ====== */
+function esc(s){return s.replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+function mdRender(s){
+  let h = esc(s);
+  h = h.replace(/^## (.+)$/gm,"<h2>$1</h2>");
+  h = h.replace(/\*\*(.+?)\*\*/g,"<b>$1</b>");
+  h = h.replace(/\[((?:AI Act|RODO|Wytyczne|art\.|załącznik|motyw)[^\]]*)\]/gi,'<span class="cite">[$1]</span>');
+  // listy
+  h = h.replace(/((?:^[-*] .+\n?)+)/gm, m=>{
+    const items = m.trim().split(/\n/).map(l=>"<li>"+l.replace(/^[-*] /,"")+"</li>").join("");
+    return "<ul>"+items+"</ul>";
+  });
+  h = h.replace(/\n{2,}/g,"<br><br>").replace(/\n/g,"<br>");
+  h = h.replace(/(<\/h2>)(<br>)+/g,"$1").replace(/(<br>)+(<h2>)/g,"$2")
+       .replace(/(<\/ul>)(<br>)+/g,"$1").replace(/(<br>)+(<ul>)/g,"$2");
+  return h;
+}
+function refreshCorpusPanel(){
+  const byAct={};
+  corpus.forEach(c=>{byAct[c.akt]=(byAct[c.akt]||0)+1;});
+  document.getElementById("corpusMeta").textContent =
+    `${corpus.length} fragmentów · ${Object.keys(byAct).length} aktów`;
+  document.getElementById("actList").innerHTML =
+    Object.entries(byAct).map(([a,n])=>`<li><span>${esc(a)}</span><span>${n} fragm.</span></li>`).join("");
+  buildIndex();
+}
+
+/* ====== połączenie ====== */
+function cfg(){
+  return {
+    base: document.getElementById("baseUrl").value.trim().replace(/\/+$/,""),
+    model: document.getElementById("model").value.trim(),
+    key: document.getElementById("apiKey").value.trim(),
+    label: "A"
+  };
+}
+function cfgB(){
+  return {
+    base: document.getElementById("baseUrlB").value.trim().replace(/\/+$/,""),
+    model: document.getElementById("modelB").value.trim(),
+    key: document.getElementById("apiKeyB").value.trim(),
+    label: "B"
+  };
+}
+function headers(c){
+  const conf = c || cfg();
+  const h={"Content-Type":"application/json"};
+  if(conf.key) h["Authorization"]="Bearer "+conf.key;
+  return h;
+}
+function compareEnabled(){ return document.getElementById("compareToggle").checked; }
+function applyPreset(v, b, m){
+  if(v==="ollama"){b.value="http://localhost:11434/v1"; m.value="gpt-oss:20b";}
+  if(v==="lmstudio"){b.value="http://localhost:1234/v1";}
+  if(v==="openrouter"){b.value="https://openrouter.ai/api/v1"; m.value="openai/gpt-oss-120b";}
+  if(v==="groq"){b.value="https://api.groq.com/openai/v1"; m.value="openai/gpt-oss-120b";}
+  if(v==="google"){b.value="https://generativelanguage.googleapis.com/v1beta/openai"; m.value="gemma-3-27b-it";}
+  if(v==="together"){b.value="https://api.together.xyz/v1"; m.value="google/gemma-4-31b-it";}
+}
+document.getElementById("preset").addEventListener("change",e=>{
+  applyPreset(e.target.value, document.getElementById("baseUrl"), document.getElementById("model"));
+});
+document.getElementById("presetB").addEventListener("change",e=>{
+  applyPreset(e.target.value, document.getElementById("baseUrlB"), document.getElementById("modelB"));
+});
+document.getElementById("compareToggle").addEventListener("change",e=>{
+  document.getElementById("configB").style.display = e.target.checked ? "block" : "none";
+  document.getElementById("ansGrid").classList.toggle("two", e.target.checked);
+  saveSettings();
+});
+async function testConnection(conf, statusElId){
+  const st=document.getElementById(statusElId);
+  st.className="status"; st.innerHTML='<span class="spinner"></span>Sprawdzam klucz i model (prawdziwe zapytanie)…';
+  try{
+    const r=await fetch(conf.base+"/chat/completions",{
+      method:"POST", headers:headers(conf),
+      body:JSON.stringify({model:conf.model, max_tokens:4,
+        messages:[{role:"user",content:"ping"}]})
+    });
+    if(!r.ok){
+      const body=await r.text();
+      throw new Error("HTTP "+r.status+" — "+body.slice(0,200));
+    }
+    st.className="status ok";
+    st.textContent="Połączono — klucz i model działają (zweryfikowano prawdziwym zapytaniem).";
+  }catch(e){
+    st.className="status err";
+    st.textContent="Błąd: "+e.message+
+      ". Sprawdź: czy klucz jest wklejony (bez spacji), czy wybrany model istnieje u tego dostawcy, "+
+      "a lokalnie — czy serwer działa i ma ustawiony CORS ($env:OLLAMA_ORIGINS=\"*\").";
+  }
+}
+document.getElementById("btnTest").addEventListener("click", ()=>testConnection(cfg(), "connStatus"));
+document.getElementById("btnTestB").addEventListener("click", ()=>testConnection(cfgB(), "connStatusB"));
+
+/* ====== import / export ====== */
+document.getElementById("btnImport").addEventListener("click",()=>document.getElementById("fileInput").click());
+document.getElementById("fileInput").addEventListener("change", async e=>{
+  const f=e.target.files[0]; if(!f) return;
+  const st=document.getElementById("corpusStatus");
+  try{
+    const text=await f.text();
+    let items;
+    if(f.name.endsWith(".json")){
+      items=JSON.parse(text);
+      if(!Array.isArray(items)) throw new Error("JSON musi być tablicą");
+    }else{
+      items=text.split(/^===+$/m).map(s=>s.trim()).filter(Boolean).map(block=>{
+        const nl=block.indexOf("\n");
+        const head=(nl<0?block:block.slice(0,nl)).split("|").map(s=>s.trim());
+        return {akt:head[0]||"Akt", przepis:head[1]||"", tekst:nl<0?"":block.slice(nl+1).trim(), tagi:[]};
+      });
+    }
+    items.forEach(it=>{if(!it.tekst) throw new Error("fragment bez pola tekst");});
+    corpus=items.map((c,i)=>({id:i+1, typ:c.typ||"tekst importowany", tagi:c.tagi||[], ...c}));
+    refreshCorpusPanel();
+    st.className="status ok"; st.textContent=`Wczytano ${corpus.length} fragmentów z ${f.name}.`;
+  }catch(err){ st.className="status err"; st.textContent="Błąd importu: "+err.message; }
+  e.target.value="";
+});
+document.getElementById("btnExport").addEventListener("click",()=>{
+  const blob=new Blob([JSON.stringify(corpus,null,2)],{type:"application/json"});
+  const a=document.createElement("a");
+  a.href=URL.createObjectURL(blob); a.download="korpus.json"; a.click();
+  URL.revokeObjectURL(a.href);
+});
+
+/* ====== przykład ====== */
+document.getElementById("btnExampleQ").addEventListener("click",()=>{
+  document.getElementById("query").value =
+"Czy jednostka wojskowa jest systemem wysokiego ryzyka w rozumieniu AI Act?";
+});
+document.getElementById("btnExample").addEventListener("click",()=>{
+  document.getElementById("query").value =
+"System AI do wstępnej selekcji kandydatów w rekrutacji: analizuje CV i wyniki testów, "+
+"tworzy ranking kandydatów i rekomenduje, kogo zaprosić na rozmowę. Ostateczną decyzję "+
+"podejmuje komisja, ale w praktyce korzysta z rankingu. System przetwarza dane osobowe "+
+"kandydatów (w tym wyniki testów psychologicznych), działa w sieci wewnętrznej organizacji, "+
+"model uruchamiany lokalnie. Oceń zgodność z AI Act i RODO.";
+});
+
+/* ====== główny przebieg ====== */
+document.getElementById("btnStop").addEventListener("click",()=>{ controllers.forEach(c=>c.abort()); });
+document.getElementById("btnRun").addEventListener("click", run);
+
+let controllers=[];
+
+async function generateOne(conf, frags, q, elIds){
+  const ans=document.getElementById(elIds.answer);
+  const st=document.getElementById(elIds.status);
+  const header=document.getElementById(elIds.header);
+  if(header) header.innerHTML = elIds.title + '<span class="model-badge'+(conf.label==="B"?" b":"")+'">'+esc(conf.model||"?")+'</span>';
+  ans.innerHTML="";
+  st.className="status"; st.innerHTML='<span class="spinner"></span>Model generuje ocenę…';
+  const controller=new AbortController();
+  controllers.push(controller);
+  let acc="";
+  try{
+    const r=await fetch(conf.base+"/chat/completions",{
+      method:"POST",headers:headers(conf),signal:controller.signal,
+      body:JSON.stringify({
+        model:conf.model, stream:true, temperature:0.2,
+        messages:[
+          {role:"system",content:SYSTEM_PROMPT},
+          {role:"user",content:buildUserMsg(q,frags)}
+        ]
+      })
+    });
+    if(!r.ok){ throw new Error("HTTP "+r.status+" — "+(await r.text()).slice(0,300)); }
+    const reader=r.body.getReader(); const dec=new TextDecoder(); let buf="";
+    while(true){
+      const {done,value}=await reader.read(); if(done) break;
+      buf+=dec.decode(value,{stream:true});
+      const lines=buf.split("\n"); buf=lines.pop();
+      for(const line of lines){
+        const t=line.trim();
+        if(!t.startsWith("data:")) continue;
+        const payload=t.slice(5).trim();
+        if(payload==="[DONE]") continue;
+        try{
+          const j=JSON.parse(payload);
+          const delta=j.choices?.[0]?.delta?.content ?? j.choices?.[0]?.message?.content ?? "";
+          if(delta){ acc+=delta; ans.innerHTML=mdRender(acc); }
+        }catch(_){/* niepełny JSON w buforze */}
+      }
+    }
+    if(!acc){
+      st.textContent="Endpoint nie streamuje — ponawiam bez strumienia…";
+      const r2=await fetch(conf.base+"/chat/completions",{
+        method:"POST",headers:headers(conf),
+        body:JSON.stringify({model:conf.model,temperature:0.2,
+          messages:[{role:"system",content:SYSTEM_PROMPT},{role:"user",content:buildUserMsg(q,frags)}]})});
+      const j2=await r2.json();
+      acc=j2.choices?.[0]?.message?.content||"(pusta odpowiedź)";
+      ans.innerHTML=mdRender(acc);
+    }
+    st.className="status ok"; st.textContent="Gotowe ("+(conf.model||"model "+conf.label)+").";
+  }catch(e){
+    if(e.name==="AbortError"){ st.className="status"; st.textContent="Przerwano."; }
+    else{ st.className="status err"; st.textContent="Błąd ("+conf.label+"): "+e.message; }
+  }
+}
+
+async function run(){
+  const q=document.getElementById("query").value.trim();
+  const st=document.getElementById("runStatus");
+  if(q.length<20){ st.className="status err"; st.textContent="Opisz system nieco dokładniej (min. 20 znaków)."; return; }
+
+  const frags=retrieve(q,7);
+  const fragCard=document.getElementById("fragCard"), fragList=document.getElementById("fragList");
+  fragCard.style.display="block";
+  if(!frags.length){
+    fragList.innerHTML='<div class="frag"><div class="txt">Brak pasujących przepisów w korpusie — uzupełnij korpus albo doprecyzuj opis.</div></div>';
+    st.className="status err"; st.textContent="Retrieval nie znalazł podstaw — nie wysyłam zapytania do modelu.";
+    return;
+  }
+  fragList.innerHTML=frags.map((f,i)=>
+    `<div class="frag"><span class="score">trafność ${f.s.toFixed(1)}</span>
+     <div class="src">[${i+1}] ${esc(f.c.akt)}, ${esc(f.c.przepis)}
+       <span class="tag">${esc(f.c.typ||"")}</span></div>
+     <div class="txt">${esc(f.c.tekst.length>700?f.c.tekst.slice(0,700)+" […]":f.c.tekst)}</div></div>`).join("");
+
+  const doCompare = compareEnabled();
+  document.getElementById("ansCard").style.display="block";
+  document.getElementById("ansCardB").style.display = doCompare ? "block" : "none";
+  document.getElementById("ansGrid").classList.toggle("two", doCompare);
+
+  const btnRun=document.getElementById("btnRun"), btnStop=document.getElementById("btnStop");
+  btnRun.disabled=true; btnStop.style.display="inline-block";
+  controllers=[];
+  st.className="status"; st.textContent = doCompare ? "Generuję dwie odpowiedzi równolegle…" : "Generuję odpowiedź…";
+
+  const tasks=[ generateOne(cfg(), frags, q, {answer:"answer", status:"runStatus", header:"ansHeaderA", title:"Ocena zgodności — szkic "}) ];
+  if(doCompare){
+    tasks.push( generateOne(cfgB(), frags, q, {answer:"answerB", status:"runStatusB2", header:"ansHeaderB", title:"Ocena zgodności — model B "}) );
+  }
+  try{
+    await Promise.all(tasks);
+    st.className="status ok"; st.textContent="Gotowe.";
+  }finally{
+    btnRun.disabled=false; btnStop.style.display="none"; controllers=[];
+  }
+}
+
+/* ====== diagnostyka: czy localStorage w ogóle działa na tym urządzeniu ====== */
+function testStorage(){
+  const el = document.getElementById("storageStatus");
+  try{
+    const testKey = "aiact_demo_probe";
+    localStorage.setItem(testKey, "1");
+    const back = localStorage.getItem(testKey);
+    localStorage.removeItem(testKey);
+    if(back === "1"){
+      el.className = "status ok";
+      el.textContent = "Zapamiętywanie działa — klucz zostanie zapisany na tym urządzeniu.";
+      return true;
+    }
+    throw new Error("odczyt nie zgadza się z zapisem");
+  }catch(e){
+    el.className = "status err";
+    el.innerHTML = "Zapamiętywanie NIE działa w tej przeglądarce (" + e.message + "). "+
+      "Wklejaj klucz ręcznie przed każdym użyciem — np. z Notatek w telefonie.";
+    return false;
+  }
+}
+document.getElementById("btnSaveNow").addEventListener("click",()=>{
+  saveSettings();
+  const ok = testStorage();
+  if(ok){
+    const st = document.getElementById("storageStatus");
+    st.textContent = "Zapisano ręcznie. " + st.textContent;
+  }
+});
+
+/* ====== zapamiętywanie ustawień na tym urządzeniu ====== */
+const LS_KEY = "aiact_demo_settings_v1";
+function saveSettings(){
+  try{
+    localStorage.setItem(LS_KEY, JSON.stringify({
+      preset: document.getElementById("preset").value,
+      base: document.getElementById("baseUrl").value,
+      model: document.getElementById("model").value,
+      key: document.getElementById("apiKey").value,
+      compare: document.getElementById("compareToggle").checked,
+      presetB: document.getElementById("presetB").value,
+      baseB: document.getElementById("baseUrlB").value,
+      modelB: document.getElementById("modelB").value,
+      keyB: document.getElementById("apiKeyB").value
+    }));
+  }catch(_){/* localStorage niedostępny — po prostu nie zapamiętujemy */}
+}
+function loadSettings(){
+  try{
+    const raw = localStorage.getItem(LS_KEY);
+    if(!raw) return;
+    const s = JSON.parse(raw);
+    if(s.preset) document.getElementById("preset").value = s.preset;
+    if(s.base) document.getElementById("baseUrl").value = s.base;
+    if(s.model) document.getElementById("model").value = s.model;
+    if(s.key) document.getElementById("apiKey").value = s.key;
+    if(s.presetB) document.getElementById("presetB").value = s.presetB;
+    if(s.baseB) document.getElementById("baseUrlB").value = s.baseB;
+    if(s.modelB) document.getElementById("modelB").value = s.modelB;
+    if(s.keyB) document.getElementById("apiKeyB").value = s.keyB;
+    if(s.compare){
+      document.getElementById("compareToggle").checked = true;
+      document.getElementById("configB").style.display = "block";
+      document.getElementById("ansGrid").classList.add("two");
+    }
+  }catch(_){/* ignoruj uszkodzone dane */}
+}
+["preset","baseUrl","model","apiKey","compareToggle","presetB","baseUrlB","modelB","apiKeyB"].forEach(id=>{
+  document.getElementById(id).addEventListener("change", saveSettings);
+  document.getElementById(id).addEventListener("input", saveSettings);
+});
+
+/* ====== eksport: zbieranie treści ====== */
+function exportSnapshot(answerElId){
+  const q = document.getElementById("query").value.trim();
+  const ansHTML = document.getElementById(answerElId || "answer").innerHTML;
+  const fragNodes = [...document.querySelectorAll("#fragList .frag")];
+  const frags = fragNodes.map(n=>{
+    const src = n.querySelector(".src")?.textContent.replace(/\s+/g," ").trim() || "";
+    const txt = n.querySelector(".txt")?.textContent.trim() || "";
+    return {src, txt};
+  });
+  const now = new Date();
+  const stamp = now.toLocaleString("pl-PL");
+  return {q, ansHTML, frags, stamp};
+}
+function esc2(s){return (s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");}
+
+document.getElementById("btnExportPdf").addEventListener("click",()=>{
+  const {q, ansHTML, frags, stamp} = exportSnapshot("answer");
+  if(!ansHTML){ alert("Najpierw wygeneruj ocenę."); return; }
+  const fragsHTML = frags.map(f=>`<div class="pfrag"><b>${esc2(f.src)}</b>${esc2(f.txt)}</div>`).join("");
+  document.getElementById("printArea").innerHTML = `
+    <h1>Asystent AI Act — ocena zgodności (szkic)</h1>
+    <div class="pmeta">Wygenerowano: ${esc2(stamp)} · rozporządzenie (UE) 2024/1689</div>
+    <h2>Zapytanie</h2>
+    <div>${esc2(q)}</div>
+    <h2>Znalezione przepisy (retrieval)</h2>
+    ${fragsHTML || "<div>brak</div>"}
+    <h2>Ocena — treść</h2>
+    <div>${ansHTML}</div>
+    <div class="pdisclaimer">Szkic wygenerowany automatycznie na podstawie fragmentów widocznych powyżej.
+      Wymaga weryfikacji przez prawnika przed jakimkolwiek wykorzystaniem.</div>`;
+  window.print();
+});
+
+document.getElementById("btnExportWord").addEventListener("click",()=>{
+  const {q, ansHTML, frags, stamp} = exportSnapshot("answer");
+  if(!ansHTML){ alert("Najpierw wygeneruj ocenę."); return; }
+  const fragsHTML = frags.map(f=>`<p style="margin:0 0 8pt;padding-left:8pt;border-left:2pt solid #999;font-size:10pt">
+    <b>${esc2(f.src)}</b><br>${esc2(f.txt)}</p>`).join("");
+  const doc = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8"><title>Ocena zgodności AI Act</title>
+    <style>
+      body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000}
+      h1{font-size:16pt;margin:0 0 4pt} h2{font-size:13pt;margin:16pt 0 6pt;border-bottom:1pt solid #999}
+      .meta{font-size:9pt;color:#444;margin-bottom:14pt}
+      .disc{margin-top:18pt;font-size:9pt;color:#444;border-top:1pt solid #999;padding-top:6pt}
+      .cite{font-weight:600}
+    </style></head><body>
+    <h1>Asystent AI Act — ocena zgodności (szkic)</h1>
+    <div class="meta">Wygenerowano: ${esc2(stamp)} &middot; rozporządzenie (UE) 2024/1689</div>
+    <h2>Zapytanie</h2><p>${esc2(q)}</p>
+    <h2>Znalezione przepisy (retrieval)</h2>${fragsHTML || "<p>brak</p>"}
+    <h2>Ocena &mdash; treść</h2><div>${ansHTML}</div>
+    <p class="disc">Szkic wygenerowany automatycznie na podstawie fragmentów widocznych powyżej.
+    Wymaga weryfikacji przez prawnika przed jakimkolwiek wykorzystaniem.</p>
+    </body></html>`;
+  const blob = new Blob(['\ufeff', doc], {type:"application/msword"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const fname = "ocena-aiact-" + new Date().toISOString().slice(0,16).replace(/[:T]/g,"-") + ".doc";
+  a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+});
+
+document.getElementById("btnExportPdfB").addEventListener("click",()=>{
+  const {q, ansHTML, frags, stamp} = exportSnapshot("answerB");
+  if(!ansHTML){ alert("Najpierw wygeneruj ocenę modelu B."); return; }
+  const fragsHTML = frags.map(f=>`<div class="pfrag"><b>${esc2(f.src)}</b>${esc2(f.txt)}</div>`).join("");
+  document.getElementById("printArea").innerHTML = `
+    <h1>Asystent AI Act — ocena zgodności (model B, szkic)</h1>
+    <div class="pmeta">Wygenerowano: ${esc2(stamp)} · rozporządzenie (UE) 2024/1689</div>
+    <h2>Zapytanie</h2>
+    <div>${esc2(q)}</div>
+    <h2>Znalezione przepisy (retrieval)</h2>
+    ${fragsHTML || "<div>brak</div>"}
+    <h2>Ocena — treść</h2>
+    <div>${ansHTML}</div>
+    <div class="pdisclaimer">Szkic wygenerowany automatycznie na podstawie fragmentów widocznych powyżej.
+      Wymaga weryfikacji przez prawnika przed jakimkolwiek wykorzystaniem.</div>`;
+  window.print();
+});
+
+document.getElementById("btnExportWordB").addEventListener("click",()=>{
+  const {q, ansHTML, frags, stamp} = exportSnapshot("answerB");
+  if(!ansHTML){ alert("Najpierw wygeneruj ocenę modelu B."); return; }
+  const fragsHTML = frags.map(f=>`<p style="margin:0 0 8pt;padding-left:8pt;border-left:2pt solid #999;font-size:10pt">
+    <b>${esc2(f.src)}</b><br>${esc2(f.txt)}</p>`).join("");
+  const doc = `<!DOCTYPE html><html xmlns:o="urn:schemas-microsoft-com:office:office"
+    xmlns:w="urn:schemas-microsoft-com:office:word" xmlns="http://www.w3.org/TR/REC-html40">
+    <head><meta charset="utf-8"><title>Ocena zgodności AI Act — model B</title>
+    <style>
+      body{font-family:Calibri,Arial,sans-serif;font-size:11pt;color:#000}
+      h1{font-size:16pt;margin:0 0 4pt} h2{font-size:13pt;margin:16pt 0 6pt;border-bottom:1pt solid #999}
+      .meta{font-size:9pt;color:#444;margin-bottom:14pt}
+      .disc{margin-top:18pt;font-size:9pt;color:#444;border-top:1pt solid #999;padding-top:6pt}
+      .cite{font-weight:600}
+    </style></head><body>
+    <h1>Asystent AI Act — ocena zgodności (model B, szkic)</h1>
+    <div class="meta">Wygenerowano: ${esc2(stamp)} &middot; rozporządzenie (UE) 2024/1689</div>
+    <h2>Zapytanie</h2><p>${esc2(q)}</p>
+    <h2>Znalezione przepisy (retrieval)</h2>${fragsHTML || "<p>brak</p>"}
+    <h2>Ocena &mdash; treść</h2><div>${ansHTML}</div>
+    <p class="disc">Szkic wygenerowany automatycznie na podstawie fragmentów widocznych powyżej.
+    Wymaga weryfikacji przez prawnika przed jakimkolwiek wykorzystaniem.</p>
+    </body></html>`;
+  const blob = new Blob(['\ufeff', doc], {type:"application/msword"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  const fname = "ocena-aiact-modelB-" + new Date().toISOString().slice(0,16).replace(/[:T]/g,"-") + ".doc";
+  a.download = fname;
+  document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  URL.revokeObjectURL(a.href);
+});
+
+/* ====== ładowanie korpusu z osobnych plików (żeby demo.html był mały) ====== */
+async function loadCorpusFiles(){
+  const st = document.getElementById("corpusStatus");
+  st.className = "status"; st.innerHTML = '<span class="spinner"></span>Wczytuję korpus (3 pliki)…';
+  const files = ["corpus_part1.json","corpus_part2.json","corpus_part3.json"];
+  try{
+    const parts = await Promise.all(files.map(async f=>{
+      const r = await fetch(f, {cache:"no-store"});
+      if(!r.ok) throw new Error(f+": HTTP "+r.status);
+      return r.json();
+    }));
+    const merged = parts.flat();
+    corpus = merged.map((c,i)=>({id:i+1, typ:c.typ||"streszczenie robocze", ...c}));
+    refreshCorpusPanel(); // wywołuje też buildIndex()
+    st.className = "status ok";
+    st.textContent = "Korpus wczytany poprawnie (" + corpus.length + " fragmentów z 3 plików).";
+  }catch(e){
+    st.className = "status err";
+    st.textContent = "Nie udało się wczytać korpusu: " + e.message +
+      ". Sprawdź, czy pliki corpus_part1.json, corpus_part2.json, corpus_part3.json " +
+      "leżą w tym samym folderze co demo.html.";
+  }
+}
+
+/* init */
+testStorage();
+loadSettings();
+loadCorpusFiles();
+if(location.protocol==="file:"){
+  document.getElementById("fileWarning").style.display="block";
+}
+
+
+</script>
+</body>
+</html>
